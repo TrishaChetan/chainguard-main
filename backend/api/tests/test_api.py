@@ -1,0 +1,185 @@
+"""Contract tests for the adapter; security decisions stay in Modules 1–6."""
+
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
+
+from backend.api.main import app
+from backend.core.blockchain.audit_log import AuditLogStore
+from backend.core.blockchain.batch_manager import BatchManager
+from backend.core.governance import pipeline
+from backend.core.governance.main import load_scenarios
+from backend.testing.signed_requests import run_signed_pipeline
+import joblib
+
+
+class PresentationApiTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        temp_root = Path(__file__).resolve().parents[3] / ".runtime"
+        temp_root.mkdir(exist_ok=True)
+        cls.audit_directory = tempfile.TemporaryDirectory(dir=temp_root)
+        cls.test_audit_store = AuditLogStore(Path(cls.audit_directory.name) / "audit.jsonl")
+        cls.audit_store_patch = patch.object(
+            pipeline, "AUDIT_LOG_STORE", cls.test_audit_store,
+        )
+        cls.audit_store_patch.start()
+        cls.batch_manager_patch = patch.object(
+            pipeline, "AUDIT_BATCH_MANAGER",
+            BatchManager(cls.test_audit_store, Path(cls.audit_directory.name) / "batches.json"),
+        )
+        cls.batch_manager_patch.start()
+        # Persist genuine freshly evaluated evidence in this isolated local
+        # store. Public scenario replay is deliberately read-only.
+        scenarios = load_scenarios()
+        for category in ("NORMAL", "SELF_ESCALATION", "UNAUTHORIZED_DELEGATION", "SCOPE_CREEP", "POST_DECOMMISSION_ACTIVITY"):
+            pipeline._runtime["model"] = joblib.load(pipeline.MODEL_PATH)
+            run_signed_pipeline(next(action for name, _, action in scenarios if name == category))
+        cls.client = TestClient(app)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.client.close()
+        cls.batch_manager_patch.stop()
+        cls.audit_store_patch.stop()
+        cls.audit_directory.cleanup()
+
+    def test_health_and_real_overview(self):
+        health = self.client.get("/api/health")
+        self.assertEqual(health.status_code, 200)
+        self.assertTrue(health.json()["rpc_connected"])
+        self.assertTrue(health.json()["contract_available"])
+        self.assertTrue(health.json()["ml_model_available"])
+        overview = self.client.get("/api/system/overview").json()
+        self.assertEqual(overview["registered_agents"], 4)
+        self.assertEqual(overview["anchored_actions"], 11)
+        self.assertEqual(overview["scenario_count"], 21)
+
+    def test_cors_and_saved_report(self):
+        response = self.client.get("/api/final-report", headers={"Origin": "http://localhost:5173"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["access-control-allow-origin"], "http://localhost:5173")
+        self.assertEqual(len(response.json()["scenarios"]), 21)
+        self.assertIn("module4", self.client.get("/api/metrics").json())
+
+    def test_agents_graph_and_public_revocation(self):
+        agents = self.client.get("/api/agents").json()
+        self.assertEqual(len(agents), 4)
+        self.assertTrue(all(agent["blockchain_address"].startswith("0x") for agent in agents))
+        graph = self.client.get("/api/delegation-graph").json()
+        self.assertEqual({node["id"] for node in graph["nodes"]},
+                         {"ROOT_AUTHORIZER", "Agent_A", "Agent_B", "Agent_C", "Agent_D"})
+        self.assertTrue(all(edge["proof_status"] == "PASS" for edge in graph["edges"]))
+        self.assertEqual(len(graph["edges"]), 7)
+        self.assertTrue(all(edge["transaction_hash"] and edge["block_number"] and edge["content_hash"]
+                            for edge in graph["edges"]))
+        self.assertFalse(any(edge["from"] == "ROOT_AUTHORIZER" and edge["to"] in ("Agent_B", "Agent_C")
+                             and edge["permission"] == "CREATE_AGENT" for edge in graph["edges"]))
+        status = self.client.get("/api/revocation/Agent_C").json()
+        self.assertEqual(status["status"], "REVOKED")
+        self.assertTrue(status["proof_verified"])
+
+    def test_audit_api_verifies_records_and_saved_replay_is_read_only(self):
+        before = self.test_audit_store.count()
+        batches_before = pipeline.AUDIT_BATCH_MANAGER.list_batches()
+        for _ in range(5):
+            result = self.client.post("/api/scenarios/normal")
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(result.json()["source"], "persisted_audit_record")
+        self.assertEqual(self.test_audit_store.count(), before)
+        self.assertEqual(pipeline.AUDIT_BATCH_MANAGER.list_batches(), batches_before)
+        status = self.client.get("/api/audit/status").json()
+        self.assertEqual(status["network"], "Hardhat Local")
+        self.assertEqual(status["network_name"], "Hardhat Local")
+        self.assertEqual(status["chain_id"], 31337)
+        self.assertTrue(status["rpc_connected"])
+        self.assertTrue(status["contract_available"])
+        self.assertFalse(status["explorer_available"])
+        self.assertEqual(status["batch_size"], 5)
+        self.assertGreaterEqual(status["anchored_batch_count"], 1)
+        self.assertIsInstance(status["current_block"], int)
+        self.assertIsNone(status["explorer_url"])
+
+        logs = self.client.get("/api/audit/logs", params={"limit": 10}).json()
+        self.assertGreaterEqual(logs["total"], 5)
+        batch_list = self.client.get("/api/audit/batches").json()
+        anchored_batch = next(batch for batch in batch_list["batches"] if batch["status"] == "ANCHORED")
+        action_id = anchored_batch["first_action_id"]
+        action = self.client.get(f"/api/audit/actions/{action_id}").json()
+        self.assertTrue(action["record_hash"].startswith("0x"))
+        proof = self.client.get(f"/api/audit/actions/{action_id}/proof").json()
+        self.assertEqual(proof["result"], "VERIFIED")
+        self.assertEqual(proof["calculated_root"], proof["blockchain_root"])
+        self.assertTrue(proof["blockchain"]["transaction_hash"].startswith("0x"))
+
+        batch_id = proof["batch_id"]
+        batch = self.client.get(f"/api/audit/batches/{batch_id}").json()
+        self.assertEqual(batch["status"], "ANCHORED")
+        self.assertEqual(batch["merkle_root"], proof["blockchain_root"])
+        self.assertTrue(batch["blockchain_tx_hash"].startswith("0x"))
+        self.assertGreaterEqual(batch_list["total"], 1)
+
+        tampered = dict(action["record"], target="tampered-demo-copy")
+        rejected = self.client.post(f"/api/audit/actions/{action_id}/verify", json={"record_override": tampered})
+        self.assertEqual(rejected.status_code, 200)
+        self.assertEqual(rejected.json()["result"], "TAMPERED")
+        self.assertEqual(self.client.post(f"/api/audit/actions/{action_id}/verify").json()["result"], "VERIFIED")
+
+    def test_credentials_and_historical_trace(self):
+        credentials = self.client.get("/api/agents/Agent_C/credentials").json()["credentials"]
+        self.assertEqual({item["permission"] for item in credentials}, {"PROCESS_PAYMENT", "CREATE_AGENT"})
+        self.assertTrue(all(item["proof_status"] == "PASS" for item in credentials))
+        self.assertEqual(self.client.get("/api/agents/Unknown/credentials").status_code, 404)
+        trace = self.client.get("/api/trace", params={"agent_id": "Agent_C", "permission": "CREATE_AGENT"}).json()
+        self.assertEqual(trace["verdict"], "VALID_CHAIN")
+        self.assertEqual([hop["to"] for hop in trace["chain"]], ["Agent_A", "Agent_B", "Agent_C"])
+        action_trace = self.client.get("/api/trace/scenario/post_decommission").json()
+        self.assertEqual(action_trace["verdict"], "AUTHORITY_REVOKED_AT_TIME_OF_ACTION")
+
+    def test_scenario_and_injected_authorization(self):
+        attack = self.client.post("/api/scenarios/self_escalation")
+        self.assertEqual(attack.status_code, 200)
+        self.assertEqual(attack.json()["verdict"]["governance_decision"], "BLOCK")
+        before = self.test_audit_store.count()
+        spoof = self.client.post("/api/governance/evaluate", json={
+            "actor": "Agent_D", "action": "CHECK_CREATE_AGENT",
+            "permission": "CREATE_AGENT", "result": "ALLOWED",
+        })
+        self.assertEqual(spoof.status_code, 401)
+        self.assertEqual(self.test_audit_store.count(), before)
+
+    def test_websocket_saved_stage_sequence_does_not_invent_latency(self):
+        with self.client.websocket_connect("/ws/governance") as socket:
+            socket.send_json({"scenario": "normal"})
+            events = [socket.receive_json() for _ in range(12)]
+        self.assertEqual(events[0]["event"], "ACTION_RECEIVED")
+        self.assertEqual(events[-1]["event"], "VERDICT_COMPLETE")
+        self.assertIn(events[-1]["decision"], ("ALLOW", "REVIEW"))
+        self.assertTrue(events[-1]["verdict"]["authorized"])
+        self.assertEqual(events[-1]["verdict"]["trace_context_verdict"], "VALID_CHAIN")
+        self.assertEqual(events[2]["event"], "AUTHORIZATION_COMPLETE")
+        self.assertIsNone(events[2]["latency_ms"])
+        self.assertEqual(events[-1]["total_latency_ms"], events[-1]["verdict"]["total_latency_ms"])
+
+    def test_all_saved_scenarios_stream_real_verdicts(self):
+        expected = {
+            "self_escalation": "BLOCK", "unauthorized_delegation": "BLOCK",
+            "post_decommission": "BLOCK", "scope_creep": "REVIEW",
+        }
+        with self.client.websocket_connect("/ws/governance") as socket:
+            for scenario, decision in expected.items():
+                socket.send_json({"scenario": scenario})
+                events = [socket.receive_json() for _ in range(12)]
+                self.assertEqual(events[0]["event"], "ACTION_RECEIVED")
+                self.assertEqual(events[-1]["decision"], decision)
+                self.assertTrue(events[-1]["verdict"]["chain_verified"])
+                blockchain = next(event for event in events if event["event"] == "BLOCKCHAIN_VERIFY_COMPLETE")
+                self.assertTrue(blockchain["reference"]["transaction_hash"])
+                self.assertIsInstance(blockchain["reference"]["block_number"], int)
+
+
+if __name__ == "__main__":
+    unittest.main()

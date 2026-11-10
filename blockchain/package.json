@@ -1,0 +1,15 @@
+{
+  "name": "chainguard-agent-trust-registry",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "compile": "hardhat compile",
+    "node": "node scripts/start-node.mjs",
+    "test:contract": "node --test --test-concurrency=1 test/registry.test.js test/network-config.test.js test/grant-authority.test.js",
+    "deploy:sepolia": "node scripts/deploy-sepolia.js"
+  },
+  "devDependencies": {
+    "hardhat": "^3.0.0",
+    "ethers": "^6.0.0"
+  }
+}
