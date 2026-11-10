@@ -2,6 +2,8 @@
 
 > **Trust, delegation and audit for autonomous AI agents — anchored on Ethereum.**
 
+![ci](https://github.com/TrishaChetan/chainguard-main/actions/workflows/ci.yml/badge.svg)
+
 AI agents are starting to act on their own: placing orders, moving money, delegating work to other agents. That raises a simple but hard question — *should this agent be allowed to do this, right now?*
 
 ChainGuard answers it. Every agent operation passes through a pipeline that checks **who** the agent is, **what** it has been granted, **where** that authority came from, and **whether** its behaviour looks normal. The result is one of three verdicts:
@@ -138,6 +140,8 @@ Run them from the **Live Governance** page (try *Auto Demo*), then head to **Blo
 `Dashboard` · `Agents` · `Trust Graph` · `Live Governance` · `Threat Lab` · `ML Analytics` · `Revocation` · `Evaluation` · `Blockchain Audit`
 
 ## 🧪 Tests
+
+Every push runs the isolated audit-log / Merkle batching tests and a frontend production build on GitHub Actions (`.github/workflows/ci.yml`).
 
 ```bash
 # Python regression (needs a running Hardhat node on 8545)
