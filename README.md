@@ -141,7 +141,7 @@ Run them from the **Live Governance** page (try *Auto Demo*), then head to **Blo
 
 ## 🧪 Tests
 
-Every push runs the isolated audit-log / Merkle batching tests and a frontend production build on GitHub Actions (`.github/workflows/ci.yml`).
+Every push runs on GitHub Actions (`.github/workflows/ci.yml`): the isolated audit-log / Merkle batching tests, a frontend production build, and a chain job that compiles the contracts, starts a local Hardhat node, and runs the contract tests plus the full blockchain module test suite (including on-chain anchoring).
 
 ```bash
 # Python regression (needs a running Hardhat node on 8545)
