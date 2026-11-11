@@ -11,10 +11,6 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - name: Contract tests
-        run: npm run test:contract
-        working-directory: blockchain
-        timeout-minutes: 10
       - run: pip install -r requirements.txt pytest
       # These tests are isolated and need no blockchain node. The one test that
       # deploys a contract is skipped here; run the full suite locally against Hardhat.
@@ -73,6 +69,10 @@ jobs:
             sleep 1
           done
         working-directory: blockchain
+      - name: Contract tests
+        run: npm run test:contract
+        working-directory: blockchain
+        timeout-minutes: 10
       - run: pip install -r requirements.txt pytest
       - name: Blockchain module tests (including contract deployment)
         run: pytest -q backend/core/blockchain/tests
