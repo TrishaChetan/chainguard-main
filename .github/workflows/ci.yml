@@ -36,3 +36,41 @@ jobs:
       - run: npm run build
         env:
           VITE_API_BASE_URL: http://127.0.0.1:8001
+
+  chain:
+    name: Smart contracts + chain-backed tests (Hardhat)
+    runs-on: ubuntu-latest
+    env:
+      CHAINGUARD_NETWORK: hardhat
+      CHAINGUARD_RPC_URL: http://127.0.0.1:8545
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: blockchain/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: npm ci
+        working-directory: blockchain
+      - run: npm run compile
+        working-directory: blockchain
+      - name: Contract tests
+        run: npm run test:contract
+        working-directory: blockchain
+      - name: Start local Hardhat chain
+        run: |
+          (npm run node > hardhat.log 2>&1 &)
+          for i in $(seq 1 60); do
+            curl -s -X POST -H 'content-type: application/json' \
+              --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' \
+              http://127.0.0.1:8545 && break
+            sleep 1
+          done
+        working-directory: blockchain
+      - run: pip install -r requirements.txt pytest
+      - name: Blockchain module tests (including contract deployment)
+        run: pytest -q backend/core/blockchain/tests
