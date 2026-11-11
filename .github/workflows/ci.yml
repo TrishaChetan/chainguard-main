@@ -11,6 +11,10 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
+      - name: Contract tests
+        run: npm run test:contract
+        working-directory: blockchain
+        timeout-minutes: 10
       - run: pip install -r requirements.txt pytest
       # These tests are isolated and need no blockchain node. The one test that
       # deploys a contract is skipped here; run the full suite locally against Hardhat.
@@ -40,6 +44,7 @@ jobs:
   chain:
     name: Smart contracts + chain-backed tests (Hardhat)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       CHAINGUARD_NETWORK: hardhat
       CHAINGUARD_RPC_URL: http://127.0.0.1:8545
@@ -58,9 +63,6 @@ jobs:
         working-directory: blockchain
       - run: npm run compile
         working-directory: blockchain
-      - name: Contract tests
-        run: npm run test:contract
-        working-directory: blockchain
       - name: Start local Hardhat chain
         run: |
           (npm run node > hardhat.log 2>&1 &)
@@ -74,3 +76,4 @@ jobs:
       - run: pip install -r requirements.txt pytest
       - name: Blockchain module tests (including contract deployment)
         run: pytest -q backend/core/blockchain/tests
+        timeout-minutes: 15
