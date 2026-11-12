@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+// default matches the demo server (backend/api/demo_server.py) so a plain `npm run dev` connects
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8001'
 
 async function request(path, options = {}) {
   const controller = new AbortController()

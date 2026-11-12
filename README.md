@@ -89,7 +89,15 @@ pip install -r requirements.txt
 
 > You do **not** need a `.env` file for the local demo. `.env.example` is only for Sepolia.
 
-### 2. Run (three terminals)
+### 2. Run — one command
+
+```bash
+python run_local.py --open
+```
+
+This compiles the contracts on first run, starts the Hardhat chain, starts the backend (which deploys the registry and seeds the demo), starts the dashboard, and opens http://localhost:5173. Each step waits for the previous one to be healthy, and **Ctrl+C stops everything**. Use `--no-ui` for chain + backend only.
+
+### 2b. Or run each part yourself (three terminals)
 
 **① Local blockchain**
 ```bash
