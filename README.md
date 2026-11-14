@@ -2,7 +2,7 @@
 
 > **Trust, delegation and audit for autonomous AI agents — anchored on Ethereum.**
 
-![ci](https://github.com/TrishaChetan/chainguard-main/actions/workflows/ci.yml/badge.svg)
+![ci](https://github.com/TrishaChetan/chainguard-main/actions/workflows/ci.yml/badge.svg) ![codeql](https://github.com/TrishaChetan/chainguard-main/actions/workflows/codeql.yml/badge.svg)
 
 AI agents are starting to act on their own: placing orders, moving money, delegating work to other agents. That raises a simple but hard question — *should this agent be allowed to do this, right now?*
 
@@ -208,6 +208,9 @@ Full write-ups: [`docs/research-evaluation/`](docs/research-evaluation/) · Deep
 - Tested on a single machine with a local filesystem, not distributed deployments.
 
 ## 🔐 Security notes
+
+- Every push and a weekly scheduled run analyse the Python and JavaScript with **CodeQL** (`security-extended` queries); results appear under *Security → Code scanning*.
+- **Dependabot** opens one grouped update PR per week for pip, both npm projects and GitHub Actions.
 
 - Never commit `.env` or private keys (they're git-ignored).
 - Never put secrets in `VITE_*` variables — they're visible in the browser.
