@@ -210,7 +210,6 @@ Full write-ups: [`docs/research-evaluation/`](docs/research-evaluation/) · Deep
 ## 🔐 Security notes
 
 - Every push and a weekly scheduled run analyse the Python and JavaScript with **CodeQL** (`security-extended` queries); results appear under *Security → Code scanning*.
-- **Dependabot** opens one grouped update PR per week for pip, both npm projects and GitHub Actions.
 
 - Never commit `.env` or private keys (they're git-ignored).
 - Never put secrets in `VITE_*` variables — they're visible in the browser.
