@@ -9,7 +9,7 @@
     "deploy:sepolia": "node scripts/deploy-sepolia.js"
   },
   "devDependencies": {
-    "hardhat": "^3.0.0",
+    "hardhat": "^3.21.2",
     "ethers": "^6.0.0"
   }
 }
