@@ -1,2 +1,2 @@
-scikit-learn>=1.9,<2
+scikit-learn>=1.9.1,<2
 joblib>=1.6,<2
