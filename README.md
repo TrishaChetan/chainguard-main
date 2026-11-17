@@ -143,6 +143,20 @@ Look for `"status": "ONLINE"`, `"chain_id": 31337` and `"contract_available": tr
 
 Run them from the **Live Governance** page (try *Auto Demo*), then head to **Blockchain Audit** and hit **Simulate Tampering** to watch a modified record fail its Merkle proof.
 
+## 🔍 Verify a record yourself
+
+The dashboard's verify button asks the ChainGuard server. An outside auditor shouldn't have to trust it, so `verify_proof.py` re-does the check locally. It hashes the audit record the same way (canonical JSON → Keccak-256), folds the Merkle siblings up to a root, checks that root against the batch the record was filed under and, with `--rpc`, against the root anchored in `AgentTrustRegistry` on-chain.
+
+```bash
+curl -s http://127.0.0.1:8001/api/audit/actions/<ACTION_ID>/proof > proof.json
+python verify_proof.py proof.json                                    # offline Merkle check
+python verify_proof.py proof.json --rpc http://127.0.0.1:8545        # + on-chain root
+python verify_proof.py --fetch http://127.0.0.1:8001 <ACTION_ID> --rpc http://127.0.0.1:8545
+python verify_proof.py proof.json --record edited.json               # an edited record → ⛔ DOES NOT VERIFY
+```
+
+Each step is printed with ✓/✗; `--json` gives machine-readable output. Exit code 0 = verified, 1 = does not verify, 2 = still pending or bad input. If the chain can't be reached, that's reported as "not checked", never as tampering.
+
 ## 🗺️ Dashboard pages
 
 `Dashboard` · `Agents` · `Trust Graph` · `Live Governance` · `Threat Lab` · `ML Analytics` · `Revocation` · `Evaluation` · `Blockchain Audit`
