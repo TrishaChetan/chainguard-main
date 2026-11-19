@@ -157,6 +157,15 @@ python verify_proof.py proof.json --record edited.json               # an edited
 
 Each step is printed with ✓/✗; `--json` gives machine-readable output. Exit code 0 = verified, 1 = does not verify, 2 = still pending or bad input. If the chain can't be reached, that's reported as "not checked", never as tampering.
 
+### Hand an auditor the whole log
+
+```bash
+python audit_bundle.py export http://127.0.0.1:8001 -o evidence.json          # every record + its proof, one file
+python audit_bundle.py verify evidence.json --rpc http://127.0.0.1:8545       # check all of it offline (+ chain)
+```
+
+`export` pages through the audit log and saves every record with its Merkle proof. `verify` re-checks each record exactly like `verify_proof.py` and prints a per-batch table: verified on-chain, Merkle-only, pending or tampered. It names each record that fails and flags any record that appears twice with different contents. Each batch's on-chain root is read only once, so large exports stay fast.
+
 ## 🗺️ Dashboard pages
 
 `Dashboard` · `Agents` · `Trust Graph` · `Live Governance` · `Threat Lab` · `ML Analytics` · `Revocation` · `Evaluation` · `Blockchain Audit`

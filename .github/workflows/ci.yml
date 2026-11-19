@@ -18,6 +18,7 @@ jobs:
           pytest -q backend/core/blockchain/tests/test_audit_log.py
           backend/core/blockchain/tests/test_batching.py
           backend/core/blockchain/tests/test_verify_proof.py
+          backend/core/blockchain/tests/test_audit_bundle.py
           -k "not chain_anchor"
 
   frontend:
